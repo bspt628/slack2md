@@ -129,6 +129,36 @@ slack2md --token xoxp-your-token "https://..."
 
 トークンの優先順位: `--token` フラグ > `SLACK_TOKEN` 環境変数 > `.env` ファイル
 
+### 複数 URL を一括変換
+
+複数の URL を引数に渡して一括変換できます:
+
+```bash
+slack2md "https://...url1..." "https://...url2..." "https://...url3..."
+```
+
+または、URL を記載したファイルを `--file` で指定:
+
+```bash
+slack2md --file urls.txt
+```
+
+`urls.txt` の例:
+
+```
+# コメント行は無視される
+https://your-workspace.slack.com/archives/C01ABCD2EFG/p1234567890123456
+https://your-workspace.slack.com/archives/C99XYZ0000/p6543210987654321
+```
+
+引数と `--file` を組み合わせることもできます:
+
+```bash
+slack2md "https://...url1..." --file urls.txt
+```
+
+注意: 複数 URL モードでは `--output` オプションは使用できません。各 URL ごとにファイル名が自動生成されます。
+
 ## 出力例
 
 ```markdown
