@@ -1,9 +1,12 @@
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { join, basename } from "node:path";
+import { writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { log, logWarning } from "./logger.js";
 
 const IMAGE_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico",
 ]);
+
+const MAX_CONCURRENT_DOWNLOADS = 5;
 
 /**
  * Extract all files from messages.
@@ -28,59 +31,69 @@ export function extractFiles(messages) {
  */
 export async function downloadFiles(files, token, assetsDir) {
   const fileMap = new Map();
-
   if (files.length === 0) return fileMap;
 
-  if (!existsSync(assetsDir)) {
-    mkdirSync(assetsDir, { recursive: true });
-  }
+  mkdirSync(assetsDir, { recursive: true });
 
-  for (const { file } of files) {
-    const filename = deduplicateFilename(file.name || `file-${file.id}`, assetsDir);
-    const localPath = join(assetsDir, filename);
+  const existing = new Set(readdirSync(assetsDir));
 
-    try {
-      const res = await fetch(file.url_private, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (!res.ok) {
-        process.stderr.write(`\x1b[33mWarning: failed to download ${file.name} (${res.status})\x1b[0m\n`);
-        continue;
+  // Download in batches to limit concurrency
+  for (let i = 0; i < files.length; i += MAX_CONCURRENT_DOWNLOADS) {
+    const batch = files.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
+    const results = await Promise.allSettled(
+      batch.map(({ file }) => downloadOne(file, token, assetsDir, existing))
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        const { url, filename } = result.value;
+        fileMap.set(url, filename);
       }
-
-      const buffer = Buffer.from(await res.arrayBuffer());
-      writeFileSync(localPath, buffer);
-      fileMap.set(file.url_private, filename);
-      process.stderr.write(`  Downloaded: ${filename}\n`);
-    } catch (err) {
-      process.stderr.write(`\x1b[33mWarning: failed to download ${file.name}: ${err.message}\x1b[0m\n`);
     }
   }
 
   return fileMap;
 }
 
+async function downloadOne(file, token, assetsDir, existing) {
+  const filename = deduplicateFilename(file.name || `file-${file.id}`, existing);
+  const localPath = join(assetsDir, filename);
+
+  const res = await fetch(file.url_private, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    logWarning(`Warning: failed to download ${file.name} (${res.status})`);
+    return null;
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  writeFileSync(localPath, buffer);
+  existing.add(filename);
+  log(`  Downloaded: ${filename}`);
+  return { url: file.url_private, filename };
+}
+
 /**
  * Check if a filename looks like an image.
  */
 export function isImage(filename) {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const ext = (filename.split(".").pop() || "").toLowerCase();
   return IMAGE_EXTENSIONS.has(ext);
 }
 
 /**
- * If a file with the same name already exists in the directory, add a numeric suffix.
+ * Pick a unique filename by checking against existing names in a Set.
  */
-function deduplicateFilename(name, dir) {
-  if (!existsSync(join(dir, name))) return name;
+function deduplicateFilename(name, existing) {
+  if (!existing.has(name)) return name;
 
   const dot = name.lastIndexOf(".");
   const base = dot > 0 ? name.slice(0, dot) : name;
   const ext = dot > 0 ? name.slice(dot) : "";
 
   let i = 1;
-  while (existsSync(join(dir, `${base}-${i}${ext}`))) {
+  while (existing.has(`${base}-${i}${ext}`)) {
     i++;
   }
   return `${base}-${i}${ext}`;

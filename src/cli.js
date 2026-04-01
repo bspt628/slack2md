@@ -1,10 +1,7 @@
 import { config } from "dotenv";
 import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-config({ path: resolve(__dirname, "..", ".env") });
 import { program } from "commander";
-import { writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import {
   createClient,
@@ -17,14 +14,10 @@ import {
 import { parseSlackUrl } from "./parse-url.js";
 import { formatMessages } from "./format.js";
 import { extractFiles, downloadFiles } from "./files.js";
+import { log, logError } from "./logger.js";
 
-function log(msg) {
-  process.stderr.write(`${msg}\n`);
-}
-
-function logError(msg) {
-  process.stderr.write(`\x1b[31m${msg}\x1b[0m\n`);
-}
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "..", ".env") });
 
 export function run() {
   program
@@ -105,14 +98,10 @@ async function execute(url, opts) {
   const absPath = resolve(outputPath);
   const dir = dirname(absPath);
 
-  // Ensure parent directory exists
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+  mkdirSync(dir, { recursive: true });
 
   // Download attached files
   let fileMap = new Map();
-  const assetsRelDir = "./assets";
   if (opts.download !== false) {
     const files = extractFiles(messages);
     if (files.length > 0) {
@@ -124,21 +113,21 @@ async function execute(url, opts) {
 
   // Format
   const markdown = formatMessages(messages, {
-    channelName, users, channels, fileMap, assetsRelDir,
+    channelName, users, channels, fileMap,
   });
 
   // Refuse to overwrite unless --force
-  if (existsSync(absPath)) {
-    if (!opts.force) {
+  try {
+    writeFileSync(absPath, markdown, { encoding: "utf-8", flag: opts.force ? "w" : "wx" });
+  } catch (err) {
+    if (err.code === "EEXIST") {
       throw new Error(
         `File already exists: ${absPath}\n` +
           "  Re-run with --force to overwrite."
       );
     }
-    log(`Overwriting existing file: ${absPath}`);
+    throw err;
   }
-
-  writeFileSync(absPath, markdown, "utf-8");
   log(`Written to ${absPath}`);
 }
 

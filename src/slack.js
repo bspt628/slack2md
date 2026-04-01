@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { logWarning } from "./logger.js";
 
 export function createClient(token) {
   return new WebClient(token);
@@ -54,56 +55,47 @@ async function fetchChannelHistory(client, channelId, limit) {
   return messages.slice(0, max).reverse();
 }
 
-/**
- * Resolve user IDs to display names. Returns a Map<userId, displayName>.
- */
-export async function resolveUsers(client, userIds) {
-  const users = new Map();
-  const unique = [...new Set(userIds)];
+async function batchResolve(ids, fetcher, extractor, label) {
+  const map = new Map();
+  const unique = [...new Set(ids)];
 
   for (let i = 0; i < unique.length; i += 10) {
     const batch = unique.slice(i, i + 10);
-    const results = await Promise.allSettled(
-      batch.map((id) => client.users.info({ user: id }))
-    );
+    const results = await Promise.allSettled(batch.map(fetcher));
     for (let j = 0; j < results.length; j++) {
       if (results[j].status === "fulfilled") {
-        const user = results[j].value.user;
-        users.set(
-          batch[j],
-          user.profile?.display_name || user.real_name || user.name
-        );
+        map.set(batch[j], extractor(results[j].value));
       } else {
-        process.stderr.write(`\x1b[33mWarning: could not resolve user ${batch[j]}\x1b[0m\n`);
+        logWarning(`Warning: could not resolve ${label} ${batch[j]}`);
       }
     }
   }
 
-  return users;
+  return map;
+}
+
+/**
+ * Resolve user IDs to display names. Returns a Map<userId, displayName>.
+ */
+export async function resolveUsers(client, userIds) {
+  return batchResolve(
+    userIds,
+    (id) => client.users.info({ user: id }),
+    (res) => res.user.profile?.display_name || res.user.real_name || res.user.name,
+    "user"
+  );
 }
 
 /**
  * Resolve channel IDs to channel names. Returns a Map<channelId, channelName>.
  */
 export async function resolveChannels(client, channelIds) {
-  const channels = new Map();
-  const unique = [...new Set(channelIds)];
-
-  for (let i = 0; i < unique.length; i += 10) {
-    const batch = unique.slice(i, i + 10);
-    const results = await Promise.allSettled(
-      batch.map((id) => client.conversations.info({ channel: id }))
-    );
-    for (let j = 0; j < results.length; j++) {
-      if (results[j].status === "fulfilled") {
-        channels.set(batch[j], results[j].value.channel.name);
-      } else {
-        process.stderr.write(`\x1b[33mWarning: could not resolve channel ${batch[j]}\x1b[0m\n`);
-      }
-    }
-  }
-
-  return channels;
+  return batchResolve(
+    channelIds,
+    (id) => client.conversations.info({ channel: id }),
+    (res) => res.channel.name,
+    "channel"
+  );
 }
 
 /**
@@ -122,15 +114,12 @@ export function extractMentionedIds(messages) {
   const channelIds = new Set();
 
   for (const msg of messages) {
-    // Message author
     if (msg.user) userIds.add(msg.user);
 
     const text = msg.text ?? "";
-    // User mentions
     for (const match of text.matchAll(/<@(U[A-Z0-9]+)/g)) {
       userIds.add(match[1]);
     }
-    // Channel mentions
     for (const match of text.matchAll(/<#(C[A-Z0-9]+)/g)) {
       channelIds.add(match[1]);
     }

@@ -10,10 +10,9 @@ import { isImage } from "./files.js";
  * @param {Map<string,string>} options.users - userId -> displayName
  * @param {Map<string,string>} options.channels - channelId -> channelName
  * @param {Map<string,string>} [options.fileMap] - url_private -> local filename
- * @param {string} [options.assetsRelDir] - relative path to assets dir from output file
  * @returns {string} Markdown document
  */
-export function formatMessages(messages, { channelName, users, channels, fileMap, assetsRelDir }) {
+export function formatMessages(messages, { channelName, users, channels, fileMap }) {
   const context = { users, channels };
   const lines = [];
 
@@ -60,7 +59,7 @@ export function formatMessages(messages, { channelName, users, channels, fileMap
         const localFile = fileMap?.get(file.url_private);
 
         if (localFile) {
-          const path = `${assetsRelDir || "./assets"}/${localFile}`;
+          const path = `./assets/${localFile}`;
           if (isImage(localFile)) {
             lines.push(`![${name}](${path})`);
           } else {
