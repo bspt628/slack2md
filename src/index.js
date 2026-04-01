@@ -9,3 +9,4 @@ export {
   getChannelInfo,
   extractMentionedIds,
 } from "./slack.js";
+export { extractFiles, downloadFiles, isImage } from "./files.js";

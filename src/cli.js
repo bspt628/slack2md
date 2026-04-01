@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { program } from "commander";
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, join } from "node:path";
 import {
   createClient,
   fetchMessages,
@@ -12,6 +12,7 @@ import {
 } from "./slack.js";
 import { parseSlackUrl } from "./parse-url.js";
 import { formatMessages } from "./format.js";
+import { extractFiles, downloadFiles } from "./files.js";
 
 export function run() {
   program
@@ -23,6 +24,7 @@ export function run() {
     .option("-t, --token <token>", "Slack User Token (or set SLACK_TOKEN env)")
     .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
     .option("-f, --force", "Overwrite existing file")
+    .option("--no-download", "Skip downloading attached files")
     .action(async (url, opts) => {
       try {
         await execute(url, opts);
@@ -86,18 +88,32 @@ async function execute(url, opts) {
     resolveChannels(client, channelIds),
   ]);
 
-  // Format
-  const markdown = formatMessages(messages, { channelName, users, channels });
-
-  // Output
+  // Output path (determine early so we know where to put assets)
   const outputPath = opts.output || generateFilename(channelName, threadTs);
   const absPath = resolve(outputPath);
+  const dir = dirname(absPath);
 
   // Ensure parent directory exists
-  const dir = dirname(absPath);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
+
+  // Download attached files
+  let fileMap = new Map();
+  const assetsRelDir = "./assets";
+  if (opts.download !== false) {
+    const files = extractFiles(messages);
+    if (files.length > 0) {
+      const assetsDir = join(dir, "assets");
+      console.error(`Downloading ${files.length} files...`);
+      fileMap = await downloadFiles(files, token, assetsDir);
+    }
+  }
+
+  // Format
+  const markdown = formatMessages(messages, {
+    channelName, users, channels, fileMap, assetsRelDir,
+  });
 
   // Refuse to overwrite unless --force
   if (existsSync(absPath)) {
