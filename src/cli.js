@@ -87,6 +87,16 @@ export function run() {
 }
 
 async function executeAll(urls, opts) {
+  // Validate token before entering the loop to fail fast on config errors
+  const token = opts.token || process.env.SLACK_TOKEN;
+  if (!token) {
+    throw new Error(
+      "Slack token is required.\n" +
+        "  Set SLACK_TOKEN in .env file, export as env variable, or use --token flag.\n" +
+        "  See README for Slack App setup instructions."
+    );
+  }
+
   const errors = [];
 
   for (const [index, url] of urls.entries()) {
@@ -96,10 +106,11 @@ async function executeAll(urls, opts) {
     try {
       await execute(url, opts);
     } catch (err) {
-      const errorMsg = `${url}: ${err.message}`;
+      const msg = String(err?.message ?? err).replace(/\s+/g, " ").trim();
+      const errorMsg = `${url}: ${msg}`;
       errors.push(errorMsg);
       if (urls.length > 1) {
-        logWarning(`Failed: ${err.message}`);
+        logWarning(`Failed: ${msg}`);
       } else {
         throw err;
       }

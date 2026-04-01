@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { readUrlsFromFile } from "../src/cli.js";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
@@ -8,8 +8,13 @@ import { tmpdir } from "node:os";
 const testDir = join(tmpdir(), "slack2md-cli-test-" + Date.now());
 
 describe("readUrlsFromFile", () => {
-  // Setup: create temp directory
-  mkdirSync(testDir, { recursive: true });
+  before(() => {
+    mkdirSync(testDir, { recursive: true });
+  });
+
+  after(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
 
   it("reads URLs from a file, one per line", () => {
     const filePath = join(testDir, "urls.txt");
@@ -89,10 +94,5 @@ describe("readUrlsFromFile", () => {
     assert.throws(() => readUrlsFromFile(join(testDir, "nonexistent.txt")), {
       code: "ENOENT",
     });
-  });
-
-  // Cleanup
-  it("cleanup temp dir", () => {
-    rmSync(testDir, { recursive: true, force: true });
   });
 });
