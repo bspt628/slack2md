@@ -15,9 +15,9 @@ export function mrkdwnToMarkdown(text, context = {}) {
 
   let md = text;
 
-  // HTML entities (must be decoded BEFORE other processing so that
-  // angle-bracket based patterns like links/mentions are already resolved
-  // by Slack and won't collide with literal < > in user text)
+  // Slack API already uses real angle brackets for links/mentions (<@U123>, <https://...>)
+  // and only encodes user-typed literal < > as &lt; &gt;. Decoding entities first is safe
+  // because &lt;https://...&gt; can never appear in Slack API output.
   md = md.replace(/^&gt;\s?/gm, "> "); // blockquotes first (before &gt; is decoded)
   md = md.replace(/&amp;/g, "&");
   md = md.replace(/&lt;/g, "<");

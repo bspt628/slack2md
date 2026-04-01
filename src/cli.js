@@ -1,7 +1,8 @@
-import "dotenv/config";
+import { config } from "dotenv";
+import { fileURLToPath } from "node:url";
 import { program } from "commander";
-import { writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { resolve, dirname, join } from "node:path";
 import {
   createClient,
   fetchMessages,
@@ -12,6 +13,13 @@ import {
 } from "./slack.js";
 import { parseSlackUrl } from "./parse-url.js";
 import { formatMessages } from "./format.js";
+import { extractFiles, downloadFiles } from "./files.js";
+import { log, logError } from "./logger.js";
+
+// Load .env from cwd first, then fall back to package directory
+config();
+const __dirname = dirname(fileURLToPath(import.meta.url));
+config({ path: resolve(__dirname, "..", ".env") });
 
 export function run() {
   program
@@ -23,11 +31,16 @@ export function run() {
     .option("-t, --token <token>", "Slack User Token (or set SLACK_TOKEN env)")
     .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
     .option("-f, --force", "Overwrite existing file")
+    .option("--no-download", "Skip downloading attached files")
     .action(async (url, opts) => {
+      if (opts.limit !== undefined && (!Number.isFinite(opts.limit) || opts.limit <= 0)) {
+        logError("Invalid value for --limit: expected a positive integer.");
+        process.exit(1);
+      }
       try {
         await execute(url, opts);
       } catch (err) {
-        console.error(`Error: ${err.message}`);
+        logError(`Error: ${err.message}`);
         process.exit(1);
       }
     });
@@ -48,7 +61,7 @@ async function execute(url, opts) {
   const { channelId, threadTs } = parseSlackUrl(url);
   const client = createClient(token);
 
-  console.error("Fetching channel info...");
+  log("Fetching channel info...");
   let channelInfo;
   try {
     channelInfo = await getChannelInfo(client, channelId);
@@ -62,7 +75,7 @@ async function execute(url, opts) {
   }
   const channelName = channelInfo.name || channelId;
 
-  console.error(
+  log(
     threadTs
       ? `Fetching thread in #${channelName}...`
       : `Fetching messages from #${channelName}...`
@@ -76,42 +89,52 @@ async function execute(url, opts) {
       "No messages found. The thread may have been deleted, or you may lack access."
     );
   }
-  console.error(`Found ${messages.length} messages.`);
+  log(`Found ${messages.length} messages.`);
 
   // Resolve mentions
   const { userIds, channelIds } = extractMentionedIds(messages);
-  console.error(`Resolving ${userIds.length} users, ${channelIds.length} channels...`);
+  log(`Resolving ${userIds.length} users, ${channelIds.length} channels...`);
   const [users, channels] = await Promise.all([
     resolveUsers(client, userIds),
     resolveChannels(client, channelIds),
   ]);
 
-  // Format
-  const markdown = formatMessages(messages, { channelName, users, channels });
-
-  // Output
+  // Output path (determine early so we know where to put assets)
   const outputPath = opts.output || generateFilename(channelName, threadTs);
   const absPath = resolve(outputPath);
-
-  // Ensure parent directory exists
   const dir = dirname(absPath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+
+  mkdirSync(dir, { recursive: true });
+
+  // Download attached files
+  let fileMap = new Map();
+  if (opts.download !== false) {
+    const files = extractFiles(messages);
+    if (files.length > 0) {
+      const assetsDir = join(dir, "assets");
+      log(`Downloading ${files.length} files...`);
+      fileMap = await downloadFiles(files, token, assetsDir);
+    }
   }
 
+  // Format
+  const markdown = formatMessages(messages, {
+    channelName, users, channels, fileMap,
+  });
+
   // Refuse to overwrite unless --force
-  if (existsSync(absPath)) {
-    if (!opts.force) {
+  try {
+    writeFileSync(absPath, markdown, { encoding: "utf-8", flag: opts.force ? "w" : "wx" });
+  } catch (err) {
+    if (err.code === "EEXIST") {
       throw new Error(
         `File already exists: ${absPath}\n` +
           "  Re-run with --force to overwrite."
       );
     }
-    console.error(`Overwriting existing file: ${absPath}`);
+    throw err;
   }
-
-  writeFileSync(absPath, markdown, "utf-8");
-  console.error(`Written to ${absPath}`);
+  log(`Written to ${absPath}`);
 }
 
 function generateFilename(channelName, threadTs) {

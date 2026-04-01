@@ -136,14 +136,14 @@ slack2md --token xoxp-your-token "https://..."
 
 ---
 
-@tanaka -- 2026-04-01 10:00
+@tanaka -- 2026-04-01 10:00 (UTC+09:00)
 
 ここにメッセージ本文が入る。
 リンクは [表示テキスト](https://example.com) に変換される。
 
 ---
 
-@suzuki -- 2026-04-01 10:05
+@suzuki -- 2026-04-01 10:05 (UTC+09:00)
 
 返信メッセージがここに。
 :thumbsup: (3)  :eyes: (1)
