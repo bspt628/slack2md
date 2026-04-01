@@ -1,7 +1,7 @@
 import { config } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { program } from "commander";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import {
   createClient,
@@ -14,31 +14,69 @@ import {
 import { parseSlackUrl } from "./parse-url.js";
 import { formatMessages } from "./format.js";
 import { extractFiles, downloadFiles } from "./files.js";
-import { log, logError } from "./logger.js";
+import { log, logError, logWarning } from "./logger.js";
 
 // Load .env from cwd first, then fall back to package directory
 config();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "..", ".env") });
 
+/**
+ * Read URLs from a file, one per line.
+ * Blank lines and lines starting with # are ignored.
+ */
+export function readUrlsFromFile(filePath) {
+  const absPath = resolve(filePath);
+  const content = readFileSync(absPath, "utf-8");
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
+}
+
 export function run() {
   program
     .name("slack2md")
     .description("Convert Slack messages and threads to Markdown")
     .version("0.1.0")
-    .argument("<url>", "Slack message or thread URL")
-    .option("-o, --output <path>", "Output file path")
+    .argument("[urls...]", "Slack message or thread URLs")
+    .option("-o, --output <path>", "Output file path (only for single URL)")
     .option("-t, --token <token>", "Slack User Token (or set SLACK_TOKEN env)")
     .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
     .option("-f, --force", "Overwrite existing file")
     .option("--no-download", "Skip downloading attached files")
-    .action(async (url, opts) => {
+    .option("--file <path>", "Read URLs from a file (one URL per line)")
+    .action(async (urls, opts) => {
       if (opts.limit !== undefined && (!Number.isFinite(opts.limit) || opts.limit <= 0)) {
         logError("Invalid value for --limit: expected a positive integer.");
         process.exit(1);
       }
+
+      // Collect URLs from arguments and --file
+      let allUrls = [...urls];
+
+      if (opts.file) {
+        try {
+          const fileUrls = readUrlsFromFile(opts.file);
+          allUrls = allUrls.concat(fileUrls);
+        } catch (err) {
+          logError(`Error reading URL file: ${err.message}`);
+          process.exit(1);
+        }
+      }
+
+      if (allUrls.length === 0) {
+        logError("No URLs provided. Pass URLs as arguments or use --file <path>.");
+        process.exit(1);
+      }
+
+      if (allUrls.length > 1 && opts.output) {
+        logError("The --output option cannot be used with multiple URLs.");
+        process.exit(1);
+      }
+
       try {
-        await execute(url, opts);
+        await executeAll(allUrls, opts);
       } catch (err) {
         logError(`Error: ${err.message}`);
         process.exit(1);
@@ -46,6 +84,35 @@ export function run() {
     });
 
   program.parse();
+}
+
+async function executeAll(urls, opts) {
+  const errors = [];
+
+  for (const [index, url] of urls.entries()) {
+    if (urls.length > 1) {
+      log(`\n[${index + 1}/${urls.length}] Processing: ${url}`);
+    }
+    try {
+      await execute(url, opts);
+    } catch (err) {
+      const errorMsg = `${url}: ${err.message}`;
+      errors.push(errorMsg);
+      if (urls.length > 1) {
+        logWarning(`Failed: ${err.message}`);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    logError(`\n${errors.length} URL(s) failed:`);
+    for (const err of errors) {
+      logError(`  - ${err}`);
+    }
+    process.exit(1);
+  }
 }
 
 async function execute(url, opts) {
