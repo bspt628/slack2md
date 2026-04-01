@@ -99,8 +99,16 @@ Slack でリンクをコピーするには: メッセージにカーソルを合
 
 ### チャンネルの直近メッセージを取得
 
+デフォルトで直近100件のメッセージを取得します:
+
 ```bash
 slack2md "https://your-workspace.slack.com/archives/C01ABCD2EFG"
+```
+
+`--limit` で取得件数を変更できます:
+
+```bash
+slack2md --limit 500 "https://your-workspace.slack.com/archives/C01ABCD2EFG"
 ```
 
 ### 出力先を指定
@@ -109,7 +117,7 @@ slack2md "https://your-workspace.slack.com/archives/C01ABCD2EFG"
 slack2md -o meeting-notes.md "https://your-workspace.slack.com/archives/C01ABCD2EFG/p1234567890123456"
 ```
 
-出力先を省略した場合、`<チャンネル名>-thread-<タイムスタンプ>-<日付>.md` のようなファイル名で自動生成されます。
+出力先を省略した場合、`<チャンネル名>-thread-<タイムスタンプ>-<日付>.md` のようなファイル名で自動生成されます。同名のファイルが既に存在する場合はエラーになります（`--force` で上書き可能）。
 
 ### --token フラグで直接指定
 

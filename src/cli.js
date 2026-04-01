@@ -21,7 +21,8 @@ export function run() {
     .argument("<url>", "Slack message or thread URL")
     .option("-o, --output <path>", "Output file path")
     .option("-t, --token <token>", "Slack User Token (or set SLACK_TOKEN env)")
-    .option("-f, --force", "Overwrite existing file without confirmation")
+    .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
+    .option("-f, --force", "Overwrite existing file")
     .action(async (url, opts) => {
       try {
         await execute(url, opts);
@@ -66,7 +67,9 @@ async function execute(url, opts) {
       ? `Fetching thread in #${channelName}...`
       : `Fetching messages from #${channelName}...`
   );
-  const messages = await fetchMessages(client, channelId, threadTs);
+  const messages = await fetchMessages(client, channelId, threadTs, {
+    limit: opts.limit,
+  });
 
   if (messages.length === 0) {
     throw new Error(
@@ -96,9 +99,15 @@ async function execute(url, opts) {
     mkdirSync(dir, { recursive: true });
   }
 
-  // Warn if file already exists (unless --force)
-  if (!opts.force && existsSync(absPath)) {
-    console.error(`Warning: ${absPath} already exists, overwriting.`);
+  // Refuse to overwrite unless --force
+  if (existsSync(absPath)) {
+    if (!opts.force) {
+      throw new Error(
+        `File already exists: ${absPath}\n` +
+          "  Re-run with --force to overwrite."
+      );
+    }
+    console.error(`Overwriting existing file: ${absPath}`);
   }
 
   writeFileSync(absPath, markdown, "utf-8");
@@ -108,6 +117,6 @@ async function execute(url, opts) {
 function generateFilename(channelName, threadTs) {
   const safe = channelName.replace(/[^a-zA-Z0-9_-]/g, "_");
   const date = new Date().toISOString().slice(0, 10);
-  const suffix = threadTs ? `-thread` : "";
+  const suffix = threadTs ? `-thread-${threadTs.replace(".", "")}` : "";
   return `${safe}${suffix}-${date}.md`;
 }

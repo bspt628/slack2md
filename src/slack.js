@@ -7,11 +7,11 @@ export function createClient(token) {
 /**
  * Fetch messages from a channel. If threadTs is provided, fetch the thread replies.
  */
-export async function fetchMessages(client, channelId, threadTs) {
+export async function fetchMessages(client, channelId, threadTs, { limit } = {}) {
   if (threadTs) {
     return fetchThread(client, channelId, threadTs);
   }
-  return fetchChannelHistory(client, channelId);
+  return fetchChannelHistory(client, channelId, limit);
 }
 
 async function fetchThread(client, channelId, threadTs) {
@@ -32,22 +32,26 @@ async function fetchThread(client, channelId, threadTs) {
   return messages;
 }
 
-async function fetchChannelHistory(client, channelId) {
+const DEFAULT_CHANNEL_LIMIT = 100;
+
+async function fetchChannelHistory(client, channelId, limit) {
+  const max = limit ?? DEFAULT_CHANNEL_LIMIT;
   const messages = [];
   let cursor;
 
   do {
+    const batchSize = Math.min(200, max - messages.length);
     const res = await client.conversations.history({
       channel: channelId,
-      limit: 200,
+      limit: batchSize,
       cursor,
     });
     messages.push(...(res.messages ?? []));
     cursor = res.response_metadata?.next_cursor;
-  } while (cursor);
+  } while (cursor && messages.length < max);
 
   // API returns newest first — reverse to chronological order
-  return messages.reverse();
+  return messages.slice(0, max).reverse();
 }
 
 /**
