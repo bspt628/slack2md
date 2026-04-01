@@ -32,11 +32,32 @@ export function run() {
     .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
     .option("-f, --force", "Overwrite existing file")
     .option("--no-download", "Skip downloading attached files")
+    .option("--since <date>", "Fetch messages from this date (e.g. 2026-03-01)")
+    .option("--until <date>", "Fetch messages up to this date (e.g. 2026-03-31)")
     .action(async (url, opts) => {
       if (opts.limit !== undefined && (!Number.isFinite(opts.limit) || opts.limit <= 0)) {
         logError("Invalid value for --limit: expected a positive integer.");
         process.exit(1);
       }
+
+      // Parse --since / --until to Unix timestamps
+      if (opts.since) {
+        const ts = parseDateToTimestamp(opts.since);
+        if (ts === null) {
+          logError("Invalid value for --since: expected a date string (e.g. 2026-03-01).");
+          process.exit(1);
+        }
+        opts.oldest = ts;
+      }
+      if (opts.until) {
+        const ts = parseDateToTimestamp(opts.until, true);
+        if (ts === null) {
+          logError("Invalid value for --until: expected a date string (e.g. 2026-03-31).");
+          process.exit(1);
+        }
+        opts.latest = ts;
+      }
+
       try {
         await execute(url, opts);
       } catch (err) {
@@ -82,6 +103,8 @@ async function execute(url, opts) {
   );
   const messages = await fetchMessages(client, channelId, threadTs, {
     limit: opts.limit,
+    oldest: opts.oldest,
+    latest: opts.latest,
   });
 
   if (messages.length === 0) {
@@ -142,4 +165,23 @@ function generateFilename(channelName, threadTs) {
   const date = new Date().toISOString().slice(0, 10);
   const suffix = threadTs ? `-thread-${threadTs.replace(".", "")}` : "";
   return `${safe}${suffix}-${date}.md`;
+}
+
+/**
+ * Parse a date string (YYYY-MM-DD) into a Unix timestamp string.
+ * When endOfDay is true, the timestamp is set to 23:59:59.999 of the given date.
+ * Returns null if the date string is invalid.
+ */
+export function parseDateToTimestamp(dateStr, endOfDay = false) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return null;
+  }
+  const date = new Date(dateStr + "T00:00:00");
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  if (endOfDay) {
+    date.setHours(23, 59, 59, 999);
+  }
+  return String(date.getTime() / 1000);
 }
