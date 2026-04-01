@@ -98,7 +98,7 @@ function resolveAuthor(msg, users) {
 }
 
 function escapeMdLinkText(text) {
-  return text.replace(/[\[\]]/g, "\\$&");
+  return text.replace(/[\[\]()]/g, "\\$&");
 }
 
 function formatTimestamp(ts) {

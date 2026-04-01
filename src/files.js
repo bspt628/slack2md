@@ -96,7 +96,7 @@ export function isImage(filename) {
  * Strip path separators and dangerous sequences from a filename.
  */
 function sanitizeFilename(name) {
-  return basename(name).replace(/\.\./g, "_");
+  return basename(name);
 }
 
 /**
