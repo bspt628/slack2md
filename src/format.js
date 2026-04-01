@@ -1,4 +1,5 @@
 import { mrkdwnToMarkdown } from "./convert.js";
+import { resolveEmoji } from "./emoji.js";
 import { isImage } from "./files.js";
 
 /**
@@ -77,7 +78,11 @@ export function formatMessages(messages, { channelName, users, channels, fileMap
     // Reactions
     if (msg.reactions?.length) {
       const reactionStr = msg.reactions
-        .map((r) => `:${r.name}: (${r.count})`)
+        .map((r) => {
+          const emoji = resolveEmoji(r.name);
+          const display = emoji ?? `:${r.name}:`;
+          return `${display} (${r.count})`;
+        })
         .join("  ");
       lines.push(reactionStr);
       lines.push("");

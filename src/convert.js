@@ -1,3 +1,5 @@
+import { replaceEmojiCodes } from "./emoji.js";
+
 /**
  * Convert Slack mrkdwn to standard Markdown.
  *
@@ -59,6 +61,9 @@ export function mrkdwnToMarkdown(text, context = {}) {
   // Bullet lists: Slack uses plain text bullets
   md = md.replace(/^[•◦]\s/gm, "- ");
   md = md.replace(/^(\s+)[•◦]\s/gm, "$1- ");
+
+  // Emoji shortcodes: :emoji_name: -> Unicode emoji (outside code blocks)
+  md = convertOutsideCode(md, (segment) => replaceEmojiCodes(segment));
 
   return md;
 }
