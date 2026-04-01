@@ -7,11 +7,11 @@ export function createClient(token) {
 /**
  * Fetch messages from a channel. If threadTs is provided, fetch the thread replies.
  */
-export async function fetchMessages(client, channelId, threadTs) {
+export async function fetchMessages(client, channelId, threadTs, { limit } = {}) {
   if (threadTs) {
     return fetchThread(client, channelId, threadTs);
   }
-  return fetchChannelHistory(client, channelId);
+  return fetchChannelHistory(client, channelId, limit);
 }
 
 async function fetchThread(client, channelId, threadTs) {
@@ -32,13 +32,26 @@ async function fetchThread(client, channelId, threadTs) {
   return messages;
 }
 
-async function fetchChannelHistory(client, channelId, limit = 100) {
-  const res = await client.conversations.history({
-    channel: channelId,
-    limit,
-  });
+const DEFAULT_CHANNEL_LIMIT = 100;
+
+async function fetchChannelHistory(client, channelId, limit) {
+  const max = limit ?? DEFAULT_CHANNEL_LIMIT;
+  const messages = [];
+  let cursor;
+
+  do {
+    const batchSize = Math.min(200, max - messages.length);
+    const res = await client.conversations.history({
+      channel: channelId,
+      limit: batchSize,
+      cursor,
+    });
+    messages.push(...(res.messages ?? []));
+    cursor = res.response_metadata?.next_cursor;
+  } while (cursor && messages.length < max);
+
   // API returns newest first — reverse to chronological order
-  return (res.messages ?? []).reverse();
+  return messages.slice(0, max).reverse();
 }
 
 /**
@@ -46,11 +59,8 @@ async function fetchChannelHistory(client, channelId, limit = 100) {
  */
 export async function resolveUsers(client, userIds) {
   const users = new Map();
-
-  // Deduplicate
   const unique = [...new Set(userIds)];
 
-  // Fetch in parallel (batches of 10 to avoid rate limits)
   for (let i = 0; i < unique.length; i += 10) {
     const batch = unique.slice(i, i + 10);
     const results = await Promise.allSettled(
@@ -63,6 +73,8 @@ export async function resolveUsers(client, userIds) {
           batch[j],
           user.profile?.display_name || user.real_name || user.name
         );
+      } else {
+        console.error(`Warning: could not resolve user ${batch[j]}`);
       }
     }
   }
@@ -85,6 +97,8 @@ export async function resolveChannels(client, channelIds) {
     for (let j = 0; j < results.length; j++) {
       if (results[j].status === "fulfilled") {
         channels.set(batch[j], results[j].value.channel.name);
+      } else {
+        console.error(`Warning: could not resolve channel ${batch[j]}`);
       }
     }
   }

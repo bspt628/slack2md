@@ -15,6 +15,14 @@ export function mrkdwnToMarkdown(text, context = {}) {
 
   let md = text;
 
+  // HTML entities (must be decoded BEFORE other processing so that
+  // angle-bracket based patterns like links/mentions are already resolved
+  // by Slack and won't collide with literal < > in user text)
+  md = md.replace(/^&gt;\s?/gm, "> "); // blockquotes first (before &gt; is decoded)
+  md = md.replace(/&amp;/g, "&");
+  md = md.replace(/&lt;/g, "<");
+  md = md.replace(/&gt;/g, ">");
+
   // User mentions: <@U12345> or <@U12345|name>
   md = md.replace(/<@(U[A-Z0-9]+)(?:\|([^>]*))?>/g, (_, id, label) => {
     const name = label || users.get(id) || id;
@@ -27,7 +35,7 @@ export function mrkdwnToMarkdown(text, context = {}) {
     return `#${name}`;
   });
 
-  // Links: <url|text> -> [text](url)  or  <url> -> <url>
+  // Links: <url|text> -> [text](url)  or  <url> -> url
   md = md.replace(/<(https?:\/\/[^|>]+)\|([^>]+)>/g, "[$2]($1)");
   md = md.replace(/<(https?:\/\/[^>]+)>/g, "$1");
 
@@ -35,10 +43,9 @@ export function mrkdwnToMarkdown(text, context = {}) {
   md = md.replace(/<mailto:([^|>]+)\|([^>]+)>/g, "[$2](mailto:$1)");
 
   // Bold: *text* -> **text** (but not inside code blocks)
-  // We need to be careful not to match inside code spans/blocks
+  // Use negative lookahead/behind for * to avoid matching ***bold italic***
   md = convertOutsideCode(md, (segment) => {
-    // Slack bold: *text* -> Markdown bold: **text**
-    return segment.replace(/(?<!\w)\*([^\s*](?:[^*]*[^\s*])?)\*(?!\w)/g, "**$1**");
+    return segment.replace(/(?<![*\w])\*([^\s*](?:[^*]*[^\s*])?)\*(?![*\w])/g, "**$1**");
   });
 
   // Italic: _text_ (same in Markdown, but ensure spacing)
@@ -52,14 +59,6 @@ export function mrkdwnToMarkdown(text, context = {}) {
   // Bullet lists: Slack uses plain text bullets
   md = md.replace(/^[•◦]\s/gm, "- ");
   md = md.replace(/^(\s+)[•◦]\s/gm, "$1- ");
-
-  // Blockquotes: &gt; at line start
-  md = md.replace(/^&gt;\s?/gm, "> ");
-
-  // HTML entities
-  md = md.replace(/&amp;/g, "&");
-  md = md.replace(/&lt;/g, "<");
-  md = md.replace(/&gt;/g, ">");
 
   return md;
 }
