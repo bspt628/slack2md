@@ -8,51 +8,76 @@ export function createClient(token) {
 /**
  * Fetch messages from a channel. If threadTs is provided, fetch the thread replies.
  */
-export async function fetchMessages(client, channelId, threadTs, { limit } = {}) {
+export async function fetchMessages(client, channelId, threadTs, { limit, oldest, latest } = {}) {
   if (threadTs) {
-    return fetchThread(client, channelId, threadTs);
+    return fetchThread(client, channelId, threadTs, { oldest, latest });
   }
-  return fetchChannelHistory(client, channelId, limit);
+  return fetchChannelHistory(client, channelId, limit, { oldest, latest });
 }
 
-async function fetchThread(client, channelId, threadTs) {
+async function fetchThread(client, channelId, threadTs, { oldest, latest } = {}) {
   const messages = [];
   let cursor;
 
   do {
-    const res = await client.conversations.replies({
+    const params = {
       channel: channelId,
       ts: threadTs,
       limit: 200,
       cursor,
-    });
+    };
+    if (oldest != null) params.oldest = oldest;
+    if (latest != null) params.latest = latest;
+    const res = await client.conversations.replies(params);
     messages.push(...res.messages);
     cursor = res.response_metadata?.next_cursor;
   } while (cursor);
 
-  return messages;
+  // Filter by date range (thread replies API may not fully respect oldest/latest)
+  return filterByTimestamp(messages, oldest, latest);
 }
 
 const DEFAULT_CHANNEL_LIMIT = 100;
 
-async function fetchChannelHistory(client, channelId, limit) {
+async function fetchChannelHistory(client, channelId, limit, { oldest, latest } = {}) {
   const max = limit ?? DEFAULT_CHANNEL_LIMIT;
   const messages = [];
   let cursor;
 
   do {
     const batchSize = Math.min(200, max - messages.length);
-    const res = await client.conversations.history({
+    const params = {
       channel: channelId,
       limit: batchSize,
       cursor,
-    });
+    };
+    if (oldest != null) params.oldest = oldest;
+    if (latest != null) params.latest = latest;
+    const res = await client.conversations.history(params);
     messages.push(...(res.messages ?? []));
     cursor = res.response_metadata?.next_cursor;
   } while (cursor && messages.length < max);
 
   // API returns newest first — reverse to chronological order
   return messages.slice(0, max).reverse();
+}
+
+/**
+ * Filter messages by timestamp range (used for thread replies where API
+ * filtering may not fully apply).
+ */
+function filterByTimestamp(messages, oldest, latest) {
+  const hasOldest = oldest != null;
+  const hasLatest = latest != null;
+  const oldestNum = hasOldest ? parseFloat(oldest) : undefined;
+  const latestNum = hasLatest ? parseFloat(latest) : undefined;
+
+  return messages.filter((msg) => {
+    const ts = parseFloat(msg.ts);
+    if (hasOldest && ts < oldestNum) return false;
+    if (hasLatest && ts > latestNum) return false;
+    return true;
+  });
 }
 
 async function batchResolve(ids, fetcher, extractor, label) {

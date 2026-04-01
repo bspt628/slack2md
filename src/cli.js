@@ -45,11 +45,39 @@ export function run() {
     .option("-l, --limit <number>", "Max messages to fetch for channel history (default: 100)", parseInt)
     .option("-f, --force", "Overwrite existing file")
     .option("--no-download", "Skip downloading attached files")
+    .option("--since <date>", "Fetch messages from this date (e.g. 2026-03-01)")
+    .option("--until <date>", "Fetch messages up to this date (e.g. 2026-03-31)")
     .option("--file <path>", "Read URLs from a file (one URL per line)")
     .action(async (urls, opts) => {
       if (opts.limit !== undefined && (!Number.isFinite(opts.limit) || opts.limit <= 0)) {
         logError("Invalid value for --limit: expected a positive integer.");
         process.exit(1);
+      }
+
+      // Parse --since / --until to Unix timestamps
+      if (opts.since) {
+        const ts = parseDateToTimestamp(opts.since);
+        if (ts === null) {
+          logError("Invalid value for --since: expected a date string (e.g. 2026-03-01).");
+          process.exit(1);
+        }
+        opts.oldest = ts;
+      }
+      if (opts.until) {
+        const ts = parseDateToTimestamp(opts.until, true);
+        if (ts === null) {
+          logError("Invalid value for --until: expected a date string (e.g. 2026-03-31).");
+          process.exit(1);
+        }
+        opts.latest = ts;
+      }
+
+      // Validate date range
+      if (opts.oldest !== undefined && opts.latest !== undefined) {
+        if (parseFloat(opts.oldest) > parseFloat(opts.latest)) {
+          logError("Invalid date range: --since must be earlier than or equal to --until.");
+          process.exit(1);
+        }
       }
 
       // Collect URLs from arguments and --file
@@ -160,6 +188,8 @@ async function execute(url, opts) {
   );
   const messages = await fetchMessages(client, channelId, threadTs, {
     limit: opts.limit,
+    oldest: opts.oldest,
+    latest: opts.latest,
   });
 
   if (messages.length === 0) {
@@ -220,4 +250,40 @@ function generateFilename(channelName, threadTs) {
   const date = new Date().toISOString().slice(0, 10);
   const suffix = threadTs ? `-thread-${threadTs.replace(".", "")}` : "";
   return `${safe}${suffix}-${date}.md`;
+}
+
+/**
+ * Parse a date string (YYYY-MM-DD) into a Unix timestamp string.
+ * When endOfDay is true, the timestamp is set to 23:59:59.999 of the given date.
+ * Returns null if the date string is invalid.
+ */
+export function parseDateToTimestamp(dateStr, endOfDay = false) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    return null;
+  }
+  const [yearStr, monthStr, dayStr] = dateStr.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  // Reject out-of-range dates that JavaScript normalizes (e.g. Feb 30 -> Mar 2)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+  if (endOfDay) {
+    // Use start of next day minus 1 microsecond to cover Slack microsecond precision
+    date.setDate(date.getDate() + 1);
+    return String(date.getTime() / 1000 - 0.000001);
+  }
+  return String(date.getTime() / 1000);
 }
