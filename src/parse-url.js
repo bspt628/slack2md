@@ -37,10 +37,15 @@ export function parseSlackUrl(url) {
 }
 
 /**
- * Convert Slack URL timestamp (p1234567890123456) to API timestamp (1234567890.123456)
+ * Convert Slack URL timestamp (1234567890123456) to API timestamp (1234567890.123456).
+ * Expects exactly 16 digits: 10 digits (seconds) + 6 digits (microseconds).
  */
 function pToTs(p) {
-  // The "p" prefix is already stripped. The timestamp is seconds (10 digits) + microseconds (6 digits).
+  if (p.length !== 16) {
+    throw new Error(
+      `Invalid Slack timestamp format: expected 16 digits, got ${p.length} ("${p}")`
+    );
+  }
   const seconds = p.slice(0, 10);
   const micro = p.slice(10);
   return `${seconds}.${micro}`;

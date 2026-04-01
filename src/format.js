@@ -32,8 +32,10 @@ export function formatMessages(messages, { channelName, users, channels }) {
     lines.push("");
 
     const body = mrkdwnToMarkdown(msg.text, context);
-    lines.push(body);
-    lines.push("");
+    if (body) {
+      lines.push(body);
+      lines.push("");
+    }
 
     // Attachments (link previews, etc.)
     if (msg.attachments) {
@@ -51,8 +53,11 @@ export function formatMessages(messages, { channelName, users, channels }) {
     // Files
     if (msg.files) {
       for (const file of msg.files) {
+        const name = file.name || "file";
         if (file.url_private) {
-          lines.push(`[${file.name || "file"}](${file.url_private})`);
+          lines.push(`[${name}](${file.url_private}) (Slack authentication required)`);
+        } else {
+          lines.push(`${name}`);
         }
       }
       lines.push("");
@@ -88,5 +93,9 @@ function formatTimestamp(ts) {
   const d = String(date.getDate()).padStart(2, "0");
   const h = String(date.getHours()).padStart(2, "0");
   const min = String(date.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${d} ${h}:${min}`;
+  const offset = date.getTimezoneOffset();
+  const sign = offset <= 0 ? "+" : "-";
+  const absH = String(Math.floor(Math.abs(offset) / 60)).padStart(2, "0");
+  const absM = String(Math.abs(offset) % 60).padStart(2, "0");
+  return `${y}-${m}-${d} ${h}:${min} (UTC${sign}${absH}:${absM})`;
 }

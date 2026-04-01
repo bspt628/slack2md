@@ -32,13 +32,22 @@ async function fetchThread(client, channelId, threadTs) {
   return messages;
 }
 
-async function fetchChannelHistory(client, channelId, limit = 100) {
-  const res = await client.conversations.history({
-    channel: channelId,
-    limit,
-  });
+async function fetchChannelHistory(client, channelId) {
+  const messages = [];
+  let cursor;
+
+  do {
+    const res = await client.conversations.history({
+      channel: channelId,
+      limit: 200,
+      cursor,
+    });
+    messages.push(...(res.messages ?? []));
+    cursor = res.response_metadata?.next_cursor;
+  } while (cursor);
+
   // API returns newest first — reverse to chronological order
-  return (res.messages ?? []).reverse();
+  return messages.reverse();
 }
 
 /**
@@ -46,11 +55,8 @@ async function fetchChannelHistory(client, channelId, limit = 100) {
  */
 export async function resolveUsers(client, userIds) {
   const users = new Map();
-
-  // Deduplicate
   const unique = [...new Set(userIds)];
 
-  // Fetch in parallel (batches of 10 to avoid rate limits)
   for (let i = 0; i < unique.length; i += 10) {
     const batch = unique.slice(i, i + 10);
     const results = await Promise.allSettled(
@@ -63,6 +69,8 @@ export async function resolveUsers(client, userIds) {
           batch[j],
           user.profile?.display_name || user.real_name || user.name
         );
+      } else {
+        console.error(`Warning: could not resolve user ${batch[j]}`);
       }
     }
   }
@@ -85,6 +93,8 @@ export async function resolveChannels(client, channelIds) {
     for (let j = 0; j < results.length; j++) {
       if (results[j].status === "fulfilled") {
         channels.set(batch[j], results[j].value.channel.name);
+      } else {
+        console.error(`Warning: could not resolve channel ${batch[j]}`);
       }
     }
   }
