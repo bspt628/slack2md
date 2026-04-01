@@ -58,6 +58,14 @@ export function run() {
         opts.latest = ts;
       }
 
+      // Validate date range
+      if (opts.oldest !== undefined && opts.latest !== undefined) {
+        if (parseFloat(opts.oldest) > parseFloat(opts.latest)) {
+          logError("Invalid date range: --since must be earlier than or equal to --until.");
+          process.exit(1);
+        }
+      }
+
       try {
         await execute(url, opts);
       } catch (err) {
@@ -176,12 +184,29 @@ export function parseDateToTimestamp(dateStr, endOfDay = false) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
     return null;
   }
-  const date = new Date(dateStr + "T00:00:00");
+  const [yearStr, monthStr, dayStr] = dateStr.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+  const date = new Date(year, month - 1, day);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
+  // Reject out-of-range dates that JavaScript normalizes (e.g. Feb 30 -> Mar 2)
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
   if (endOfDay) {
-    date.setHours(23, 59, 59, 999);
+    // Use start of next day minus 1 microsecond to cover Slack microsecond precision
+    date.setDate(date.getDate() + 1);
+    return String(date.getTime() / 1000 - 0.000001);
   }
   return String(date.getTime() / 1000);
 }

@@ -26,8 +26,8 @@ async function fetchThread(client, channelId, threadTs, { oldest, latest } = {})
       limit: 200,
       cursor,
     };
-    if (oldest) params.oldest = oldest;
-    if (latest) params.latest = latest;
+    if (oldest != null) params.oldest = oldest;
+    if (latest != null) params.latest = latest;
     const res = await client.conversations.replies(params);
     messages.push(...res.messages);
     cursor = res.response_metadata?.next_cursor;
@@ -51,8 +51,8 @@ async function fetchChannelHistory(client, channelId, limit, { oldest, latest } 
       limit: batchSize,
       cursor,
     };
-    if (oldest) params.oldest = oldest;
-    if (latest) params.latest = latest;
+    if (oldest != null) params.oldest = oldest;
+    if (latest != null) params.latest = latest;
     const res = await client.conversations.history(params);
     messages.push(...(res.messages ?? []));
     cursor = res.response_metadata?.next_cursor;
@@ -67,10 +67,15 @@ async function fetchChannelHistory(client, channelId, limit, { oldest, latest } 
  * filtering may not fully apply).
  */
 function filterByTimestamp(messages, oldest, latest) {
+  const hasOldest = oldest != null;
+  const hasLatest = latest != null;
+  const oldestNum = hasOldest ? parseFloat(oldest) : undefined;
+  const latestNum = hasLatest ? parseFloat(latest) : undefined;
+
   return messages.filter((msg) => {
     const ts = parseFloat(msg.ts);
-    if (oldest && ts < parseFloat(oldest)) return false;
-    if (latest && ts > parseFloat(latest)) return false;
+    if (hasOldest && ts < oldestNum) return false;
+    if (hasLatest && ts > latestNum) return false;
     return true;
   });
 }

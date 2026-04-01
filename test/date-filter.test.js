@@ -37,6 +37,7 @@ describe("parseDateToTimestamp", () => {
   it("returns null for invalid date values", () => {
     assert.equal(parseDateToTimestamp("2026-13-01"), null);
     assert.equal(parseDateToTimestamp("2026-00-01"), null);
+    assert.equal(parseDateToTimestamp("2026-02-30"), null);
   });
 
   it("returns a string", () => {
