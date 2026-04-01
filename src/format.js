@@ -55,7 +55,7 @@ export function formatMessages(messages, { channelName, users, channels, fileMap
     // Files
     if (msg.files) {
       for (const file of msg.files) {
-        const name = file.name || "file";
+        const name = escapeMdLinkText(file.name || "file");
         const localFile = fileMap?.get(file.url_private);
 
         if (localFile) {
@@ -95,6 +95,10 @@ function resolveAuthor(msg, users) {
     return `@${msg.username} (bot)`;
   }
   return "@unknown";
+}
+
+function escapeMdLinkText(text) {
+  return text.replace(/[\[\]]/g, "\\$&");
 }
 
 function formatTimestamp(ts) {

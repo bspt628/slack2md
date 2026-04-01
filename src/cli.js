@@ -16,6 +16,8 @@ import { formatMessages } from "./format.js";
 import { extractFiles, downloadFiles } from "./files.js";
 import { log, logError } from "./logger.js";
 
+// Load .env from cwd first, then fall back to package directory
+config();
 const __dirname = dirname(fileURLToPath(import.meta.url));
 config({ path: resolve(__dirname, "..", ".env") });
 
@@ -31,6 +33,10 @@ export function run() {
     .option("-f, --force", "Overwrite existing file")
     .option("--no-download", "Skip downloading attached files")
     .action(async (url, opts) => {
+      if (opts.limit !== undefined && (!Number.isFinite(opts.limit) || opts.limit <= 0)) {
+        logError("Invalid value for --limit: expected a positive integer.");
+        process.exit(1);
+      }
       try {
         await execute(url, opts);
       } catch (err) {

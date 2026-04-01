@@ -1,5 +1,5 @@
-import { writeFileSync, mkdirSync, existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, mkdirSync, readdirSync } from "node:fs";
+import { join, basename } from "node:path";
 import { log, logWarning } from "./logger.js";
 
 const IMAGE_EXTENSIONS = new Set([
@@ -27,7 +27,8 @@ export function extractFiles(messages) {
 
 /**
  * Download files from Slack and save them to assetsDir.
- * Returns a Map<url_private, localRelativePath> for rewriting links in Markdown.
+ * Returns a Map<url_private, filename> for rewriting links in Markdown.
+ * Filenames are relative to assetsDir.
  */
 export async function downloadFiles(files, token, assetsDir) {
   const fileMap = new Map();
@@ -37,16 +38,27 @@ export async function downloadFiles(files, token, assetsDir) {
 
   const existing = new Set(readdirSync(assetsDir));
 
+  // Reserve all filenames upfront to avoid race conditions in concurrent downloads
+  const planned = files.map(({ file }) => {
+    const safeName = sanitizeFilename(file.name || `file-${file.id}`);
+    const filename = deduplicateFilename(safeName, existing);
+    existing.add(filename);
+    return { file, filename };
+  });
+
   // Download in batches to limit concurrency
-  for (let i = 0; i < files.length; i += MAX_CONCURRENT_DOWNLOADS) {
-    const batch = files.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
+  for (let i = 0; i < planned.length; i += MAX_CONCURRENT_DOWNLOADS) {
+    const batch = planned.slice(i, i + MAX_CONCURRENT_DOWNLOADS);
     const results = await Promise.allSettled(
-      batch.map(({ file }) => downloadOne(file, token, assetsDir, existing))
+      batch.map(({ file, filename }) => downloadOne(file, token, assetsDir, filename))
     );
-    for (const result of results) {
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
       if (result.status === "fulfilled" && result.value) {
         const { url, filename } = result.value;
         fileMap.set(url, filename);
+      } else if (result.status === "rejected") {
+        logWarning(`Warning: failed to download ${batch[j].file.name}: ${result.reason}`);
       }
     }
   }
@@ -54,8 +66,7 @@ export async function downloadFiles(files, token, assetsDir) {
   return fileMap;
 }
 
-async function downloadOne(file, token, assetsDir, existing) {
-  const filename = deduplicateFilename(file.name || `file-${file.id}`, existing);
+async function downloadOne(file, token, assetsDir, filename) {
   const localPath = join(assetsDir, filename);
 
   const res = await fetch(file.url_private, {
@@ -69,7 +80,6 @@ async function downloadOne(file, token, assetsDir, existing) {
 
   const buffer = Buffer.from(await res.arrayBuffer());
   writeFileSync(localPath, buffer);
-  existing.add(filename);
   log(`  Downloaded: ${filename}`);
   return { url: file.url_private, filename };
 }
@@ -80,6 +90,13 @@ async function downloadOne(file, token, assetsDir, existing) {
 export function isImage(filename) {
   const ext = (filename.split(".").pop() || "").toLowerCase();
   return IMAGE_EXTENSIONS.has(ext);
+}
+
+/**
+ * Strip path separators and dangerous sequences from a filename.
+ */
+function sanitizeFilename(name) {
+  return basename(name).replace(/\.\./g, "_");
 }
 
 /**
