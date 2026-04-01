@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { program } from "commander";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
