@@ -2,7 +2,8 @@ import { get as getEmoji } from "node-emoji";
 
 /**
  * Slack-specific emoji aliases that differ from the node-emoji (gemoji) names.
- * Maps Slack shortcode -> node-emoji shortcode or Unicode character directly.
+ * Maps Slack shortcode -> node-emoji shortcode. Direct Unicode mappings belong
+ * in SLACK_UNICODE_FALLBACK.
  */
 const SLACK_ALIASES = {
   thumbsup: "+1",
@@ -57,8 +58,8 @@ export function resolveEmoji(name) {
  * Replace all `:emoji_name:` patterns in text with Unicode emoji.
  * Unknown names (custom workspace emoji) are left as-is.
  *
- * @param {string} text - Text containing emoji shortcodes
- * @returns {string} Text with known emoji converted to Unicode
+ * @param {string|null|undefined} text - Text containing emoji shortcodes
+ * @returns {string|null|undefined} Text with known emoji converted to Unicode, or the input as-is if falsy
  */
 export function replaceEmojiCodes(text) {
   if (!text) return text;

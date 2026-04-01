@@ -26,8 +26,8 @@ describe("resolveEmoji", () => {
   });
 
   it("returns undefined for custom/unknown emoji", () => {
-    assert.equal(resolveEmoji("company_logo"), undefined);
-    assert.equal(resolveEmoji("custom_parrot"), undefined);
+    assert.equal(resolveEmoji("__unknown_emoji_test_only__"), undefined);
+    assert.equal(resolveEmoji("__nonexistent_custom_emoji__"), undefined);
   });
 });
 
