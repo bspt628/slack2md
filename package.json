@@ -1,0 +1,29 @@
+{
+  "name": "slack2md",
+  "version": "0.1.0",
+  "description": "Convert Slack messages and threads to Markdown files",
+  "type": "module",
+  "bin": {
+    "slack2md": "./bin/slack2md.js"
+  },
+  "main": "./src/index.js",
+  "scripts": {
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": [
+    "slack",
+    "markdown",
+    "converter",
+    "cli",
+    "mrkdwn"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@slack/web-api": "^7.0.0",
+    "commander": "^12.0.0"
+  }
+}
