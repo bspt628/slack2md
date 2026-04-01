@@ -74,7 +74,7 @@ export async function resolveUsers(client, userIds) {
           user.profile?.display_name || user.real_name || user.name
         );
       } else {
-        console.error(`Warning: could not resolve user ${batch[j]}`);
+        process.stderr.write(`\x1b[33mWarning: could not resolve user ${batch[j]}\x1b[0m\n`);
       }
     }
   }
@@ -98,7 +98,7 @@ export async function resolveChannels(client, channelIds) {
       if (results[j].status === "fulfilled") {
         channels.set(batch[j], results[j].value.channel.name);
       } else {
-        console.error(`Warning: could not resolve channel ${batch[j]}`);
+        process.stderr.write(`\x1b[33mWarning: could not resolve channel ${batch[j]}\x1b[0m\n`);
       }
     }
   }

@@ -45,16 +45,16 @@ export async function downloadFiles(files, token, assetsDir) {
       });
 
       if (!res.ok) {
-        console.error(`Warning: failed to download ${file.name} (${res.status})`);
+        process.stderr.write(`\x1b[33mWarning: failed to download ${file.name} (${res.status})\x1b[0m\n`);
         continue;
       }
 
       const buffer = Buffer.from(await res.arrayBuffer());
       writeFileSync(localPath, buffer);
       fileMap.set(file.url_private, filename);
-      console.error(`  Downloaded: ${filename}`);
+      process.stderr.write(`  Downloaded: ${filename}\n`);
     } catch (err) {
-      console.error(`Warning: failed to download ${file.name}: ${err.message}`);
+      process.stderr.write(`\x1b[33mWarning: failed to download ${file.name}: ${err.message}\x1b[0m\n`);
     }
   }
 

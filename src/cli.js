@@ -18,6 +18,14 @@ import { parseSlackUrl } from "./parse-url.js";
 import { formatMessages } from "./format.js";
 import { extractFiles, downloadFiles } from "./files.js";
 
+function log(msg) {
+  process.stderr.write(`${msg}\n`);
+}
+
+function logError(msg) {
+  process.stderr.write(`\x1b[31m${msg}\x1b[0m\n`);
+}
+
 export function run() {
   program
     .name("slack2md")
@@ -33,7 +41,7 @@ export function run() {
       try {
         await execute(url, opts);
       } catch (err) {
-        console.error(`Error: ${err.message}`);
+        logError(`Error: ${err.message}`);
         process.exit(1);
       }
     });
@@ -54,7 +62,7 @@ async function execute(url, opts) {
   const { channelId, threadTs } = parseSlackUrl(url);
   const client = createClient(token);
 
-  console.error("Fetching channel info...");
+  log("Fetching channel info...");
   let channelInfo;
   try {
     channelInfo = await getChannelInfo(client, channelId);
@@ -68,7 +76,7 @@ async function execute(url, opts) {
   }
   const channelName = channelInfo.name || channelId;
 
-  console.error(
+  log(
     threadTs
       ? `Fetching thread in #${channelName}...`
       : `Fetching messages from #${channelName}...`
@@ -82,11 +90,11 @@ async function execute(url, opts) {
       "No messages found. The thread may have been deleted, or you may lack access."
     );
   }
-  console.error(`Found ${messages.length} messages.`);
+  log(`Found ${messages.length} messages.`);
 
   // Resolve mentions
   const { userIds, channelIds } = extractMentionedIds(messages);
-  console.error(`Resolving ${userIds.length} users, ${channelIds.length} channels...`);
+  log(`Resolving ${userIds.length} users, ${channelIds.length} channels...`);
   const [users, channels] = await Promise.all([
     resolveUsers(client, userIds),
     resolveChannels(client, channelIds),
@@ -109,7 +117,7 @@ async function execute(url, opts) {
     const files = extractFiles(messages);
     if (files.length > 0) {
       const assetsDir = join(dir, "assets");
-      console.error(`Downloading ${files.length} files...`);
+      log(`Downloading ${files.length} files...`);
       fileMap = await downloadFiles(files, token, assetsDir);
     }
   }
@@ -127,11 +135,11 @@ async function execute(url, opts) {
           "  Re-run with --force to overwrite."
       );
     }
-    console.error(`Overwriting existing file: ${absPath}`);
+    log(`Overwriting existing file: ${absPath}`);
   }
 
   writeFileSync(absPath, markdown, "utf-8");
-  console.error(`Written to ${absPath}`);
+  log(`Written to ${absPath}`);
 }
 
 function generateFilename(channelName, threadTs) {
