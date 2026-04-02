@@ -17,7 +17,7 @@ export function extractFiles(messages) {
   for (const msg of messages) {
     if (!msg.files) continue;
     for (const file of msg.files) {
-      if (file.url_private) {
+      if (file.url_private_download || file.url_private) {
         files.push({ file, messageTs: msg.ts });
       }
     }
@@ -68,10 +68,25 @@ export async function downloadFiles(files, token, assetsDir) {
 
 async function downloadOne(file, token, assetsDir, filename) {
   const localPath = join(assetsDir, filename);
+  const downloadUrl = file.url_private_download || file.url_private;
 
-  const res = await fetch(file.url_private, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  // Slack redirects file URLs across domains (files.slack.com -> files-origin.slack.com).
+  // Node fetch strips the Authorization header on cross-origin redirects, so we
+  // follow redirects manually and re-attach the header on each hop.
+  let url = downloadUrl;
+  let res;
+  for (let hops = 0; hops < 10; hops++) {
+    res = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+      redirect: "manual",
+    });
+    const location = res.headers.get("location");
+    if (res.status >= 300 && res.status < 400 && location) {
+      url = new URL(location, url).href;
+    } else {
+      break;
+    }
+  }
 
   if (!res.ok) {
     logWarning(`Warning: failed to download ${file.name} (${res.status})`);
@@ -79,6 +94,13 @@ async function downloadOne(file, token, assetsDir, filename) {
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
+
+  // Verify we got actual file content, not an HTML login page
+  if (buffer.length > 0 && buffer.slice(0, 15).toString("utf-8").startsWith("<!DOCTYPE html>")) {
+    logWarning(`Warning: ${file.name} returned HTML instead of file data. Add files:read scope to your Slack App.`);
+    return null;
+  }
+
   writeFileSync(localPath, buffer);
   log(`  Downloaded: ${filename}`);
   return { url: file.url_private, filename };
