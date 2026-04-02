@@ -7,6 +7,8 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 const MAX_CONCURRENT_DOWNLOADS = 5;
+const MAX_REDIRECT_HOPS = 10;
+const HTML_DOCTYPE_PREFIX = "<!DOCTYPE html>";
 
 /**
  * Extract all files from messages.
@@ -75,7 +77,7 @@ async function downloadOne(file, token, assetsDir, filename) {
   // follow redirects manually and re-attach the header on each hop.
   let url = downloadUrl;
   let res;
-  for (let hops = 0; hops < 10; hops++) {
+  for (let hops = 0; hops < MAX_REDIRECT_HOPS; hops++) {
     res = await fetch(url, {
       headers: { Authorization: `Bearer ${token}` },
       redirect: "manual",
@@ -96,7 +98,7 @@ async function downloadOne(file, token, assetsDir, filename) {
   const buffer = Buffer.from(await res.arrayBuffer());
 
   // Verify we got actual file content, not an HTML login page
-  if (buffer.length > 0 && buffer.slice(0, 15).toString("utf-8").startsWith("<!DOCTYPE html>")) {
+  if (buffer.length > 0 && buffer.slice(0, HTML_DOCTYPE_PREFIX.length).toString("utf-8").startsWith(HTML_DOCTYPE_PREFIX)) {
     logWarning(`Warning: ${file.name} returned HTML instead of file data. Add files:read scope to your Slack App.`);
     return null;
   }
